@@ -1,0 +1,42 @@
+---
+- name: Ensure IPA group has users using curl
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    __ambari_ldap_group:
+      name: "example_group"
+      users: [ "user1", "user2", "user3" ]
+    __ambari_ldap_ipa_server: "ipa.example.com"
+    __ambari_ldap_ipa:
+      username: "admin"
+      password: "your_password"
+    __ambari_ldap_no_log: true
+    __ambari_ldap_responce: {}
+    ipa_api_url: "https://{{ __ambari_ldap_ipa_server }}/ipa/session/json"
+
+  tasks:
+  - name: Authenticate with FreeIPA and get session cookie
+    command: >
+      curl -k -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "user={{ __ambari_ldap_ipa.username }}&password={{ __ambari_ldap_ipa.password }}" -c /tmp/cookie.txt {{ ipa_api_url }}
+    register: auth_response
+    no_log: "{{ __ambari_ldap_no_log }}"
+
+  - name: Ensure authentication was successful
+    debug:
+      msg: "Authentication response: {{ auth_response.stdout }}"
+    when: not __ambari_ldap_no_log
+
+  - name: Add members to the IPA group using curl
+    command: >
+      curl -k -X POST -H "Content-Type: application/json" -b /tmp/cookie.txt -d '{"method":"group_add_member","params":[["{{ __ambari_ldap_group.name }}"],{"user":["{{ __ambari_ldap_group.users | join('","') }}"]}]}' {{ ipa_api_url }}
+    register: group_add_response
+    until: group_add_response.failed == false
+    retries: 3
+    delay: 5
+    no_log: "{{ __ambari_ldap_no_log }}"
+
+  - name: Show response from FreeIPA
+    debug:
+      msg: "Group add response: {{ group_add_response.stdout }}"
+    when: not __ambari_ldap_no_log

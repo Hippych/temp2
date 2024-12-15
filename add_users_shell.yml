@@ -1,0 +1,72 @@
+---
+- name: Ensure ipa group has users using shell
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    __ambari_ldap_group:
+      name: "example_group"
+      users: [ "user1", "user2", "user3" ]
+    __ambari_ldap_ipa_server: "ipa.example.com"
+    __ambari_ldap_ipa:
+      username: "admin"
+      password: "your_password"
+      timeout: 30
+      retries: 3
+      delay: 5
+      validate_certs: true
+    __ambari_ldap_no_log: true
+    __ambari_ldap_responce: {}
+
+  tasks:
+  - name: Check if users are defined
+    ansible.builtin.fail:
+      msg: "No users defined for the group {{ __ambari_ldap_group.name }}"
+    when: not (__ambari_ldap_group.users is defined and __ambari_ldap_group.users | length > 0)
+
+  - name: Authenticate with FreeIPA and save session cookie
+    ansible.builtin.shell: |
+      curl -k -s \
+        -X POST \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data "user={{ __ambari_ldap_ipa.username }}&password={{ __ambari_ldap_ipa.password }}" \
+        -c /tmp/freeipa_cookie.txt \
+        https://{{ __ambari_ldap_ipa_server }}/ipa/session/json
+    register: auth_response
+    no_log: "{{ __ambari_ldap_no_log }}"
+    changed_when: false
+
+  - name: Ensure authentication was successful
+    ansible.builtin.debug:
+      msg: "Authentication response: {{ auth_response.stdout }}"
+    when: not __ambari_ldap_no_log
+
+  - name: Add users to the group in FreeIPA
+    ansible.builtin.shell: |
+      curl -k -s \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -b /tmp/freeipa_cookie.txt \
+        -d '{
+          "method": "group_add_member",
+          "params": [
+            ["{{ __ambari_ldap_group.name }}"],
+            {"user": {{ __ambari_ldap_group.users | to_json }}}
+          ]
+        }' \
+        https://{{ __ambari_ldap_ipa_server }}/ipa/session/json
+    register: __ambari_ldap_responce
+    no_log: "{{ __ambari_ldap_no_log }}"
+    retries: "{{ __ambari_ldap_ipa.retries }}"
+    delay: "{{ __ambari_ldap_ipa.delay }}"
+    until: __ambari_ldap_responce.failed == false
+
+  - name: Display response from FreeIPA
+    ansible.builtin.debug:
+      msg: "Group add response: {{ __ambari_ldap_responce.stdout }}"
+    when: not __ambari_ldap_no_log
+
+  - name: Cleanup temporary cookie file
+    ansible.builtin.file:
+      path: "/tmp/freeipa_cookie.txt"
+      state: absent

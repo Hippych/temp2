@@ -1,0 +1,18 @@
+script
+-- name: "Ensure ipa group {{ __sdp_ambari_lgapgroup.name }} has users"
+   when: __sdp_ambari_ldap_group.users is defined and
+     __sdp_ambari_ldap_grop.users | length > 0
+   ipa_group:
+     name: "{{ __sdp_ambari_ldap_group.name }}"
+     state: present
+     user: "{{ __sdp_ambari_ldap_group.name }}"
+     ipa_host: "{{ __sdp_ambari_ldap_ipa_server }}"
+     ipa_user: "{{ __sdp_ambari_ldap_ipa.username }}"
+     ipa_pass: "{{ __sdp_ambari_ldap_ipa.password }}"
+     ipa_timeout: "{{ __sdp_ambari_ldap_ipa.timeout | default(30) }}"
+     validate_certs: "{{ __sdp_ambari_ldap_ipa.validate_certs | default(true) }}"
+   no_log: "{{ __sdp_ambari_ldap_no_log}}"
+   until: __sdp_ambari_ldap_responce.failed == false
+   retries: "{{ __sdp_ambari_ldap_ipa.retries }}"
+   delay: "{{ __sdp_ambari_ldap_ipa.delay }}"
+   register: __sdp_ambari_ldap_responce
