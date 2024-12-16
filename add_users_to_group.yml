@@ -1,0 +1,40 @@
+---
+- name: Add users to IPA group via SSH
+  hosts: freeipa_server
+  gather_facts: no
+  become: yes  # Если требуется sudo
+
+  vars:
+    __ambari_ldap_group_name: "example_group"
+    __ambari_ldap:
+      users: ["user1", "user2", "user3"]
+    __ambari_ldap_ipa:
+      username: "admin"
+      password: "your_password"
+      timeout: 30
+      retries: 3
+      delay: 5
+      validate_certs: true
+    __ambari_ldap_no_log: true
+    __ambari_ldap_responce: {}
+
+  tasks:
+    - name: Ensure users are defined for the group
+      ansible.builtin.fail:
+        msg: "No users defined for the group {{ __ambari_ldap_group_name }}"
+      when: not (__ambari_ldap.users is defined and __ambari_ldap.users | length > 0)
+
+    - name: Execute ipa group-add-member command via SSH
+      ansible.builtin.shell: |
+        ipa group-add-member "{{ __ambari_ldap_group_name }}" --users="{{ __ambari_ldap.users | join(',') }}"
+      register: __ambari_ldap_responce
+      no_log: "{{ __ambari_ldap_no_log }}"
+      retries: "{{ __ambari_ldap_ipa.retries }}"
+      delay: "{{ __ambari_ldap_ipa.delay }}"
+      until: __ambari_ldap_responce.failed == false
+
+    - name: Debug response from IPA command
+      ansible.builtin.debug:
+        msg: "IPA Response: {{ __ambari_ldap_responce.stdout }}"
+      when: not __ambari_ldap_no_log
+
